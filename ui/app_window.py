@@ -5,6 +5,14 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from database import create_table, clear_table, insert_data, fetch_all
 from api import fetch_posts
 import os
+import requests
+import re
+from collections import Counter
+from docx import Document
+from docx.shared import Inches
+from PIL import Image
+from io import BytesIO
+
 
 class Application(tk.Tk):
     def __init__(self):
@@ -17,11 +25,16 @@ class Application(tk.Tk):
 
     def create_menu(self):
         menu_bar = tk.Menu(self)
+
         data_menu = tk.Menu(menu_bar, tearoff=0)
         data_menu.add_command(label="Effacer la base de données", command=self.clear_database)
         data_menu.add_command(label="Télécharger les données", command=self.download_data)
         data_menu.add_command(label="Afficher le graphique", command=self.show_graph)
         menu_bar.add_cascade(label="Données", menu=data_menu)
+
+        book_menu = tk.Menu(menu_bar, tearoff=0)
+        book_menu.add_command(label="Traiter un livre", command=self.process_book)
+        menu_bar.add_cascade(label="Livre", menu=book_menu)
 
         options_menu = tk.Menu(menu_bar, tearoff=0)
         options_menu.add_command(label="Changer la couleur", command=self.set_bg_color)
@@ -42,7 +55,6 @@ class Application(tk.Tk):
                 messagebox.showinfo("Succès", "Le fichier de base de données a été supprimé.")
             else:
                 messagebox.showwarning("Erreur", "Le fichier n'existe pas.")
-
 
     def download_data(self):
         try:
@@ -78,3 +90,100 @@ class Application(tk.Tk):
         color = simpledialog.askstring("Options", "Entrez une couleur de fond :")
         if color:
             self.text_area.config(bg=color)
+
+
+    # ======= MÉTHODES LIVRE =======
+
+    def download_book_text(self, url):
+        response = requests.get(url)
+        response.encoding = 'utf-8'
+        return response.text
+
+    def extract_metadata_and_first_chapter(self, text):
+        title_match = re.search(r'Title:\s*(.*)', text)
+        title = title_match.group(1).strip() if title_match else "Inconnu"
+
+        author_match = re.search(r'Author:\s*(.*)', text)
+        author = author_match.group(1).strip() if author_match else "Inconnu"
+
+        chapters = re.split(r'\nChapter [0-9IVXLC]+\.*\s*\n', text, flags=re.IGNORECASE)
+        if len(chapters) > 1:
+            first_chapter = chapters[1].strip()
+        else:
+            first_chapter = text
+
+        return title, author, first_chapter
+
+    def count_words_per_paragraph(self, chapter_text):
+        paragraphs = [p.strip() for p in chapter_text.split('\n\n') if p.strip()]
+        counts = []
+        for p in paragraphs:
+            nb_mots = len(p.split())
+            nb_mots_rounded = round(nb_mots / 10) * 10
+            counts.append(nb_mots_rounded)
+        return counts
+
+    def paragraph_length_distribution(self, counts):
+        counter = Counter(counts)
+        sorted_counts = sorted(counter.items())
+        return sorted_counts
+
+    def download_image_1(self, url, save_path='image1.jpg'):
+        response = requests.get(url)
+        img = Image.open(BytesIO(response.content))
+        img.save(save_path)
+        return save_path
+
+    def crop_and_resize_image(self, path, crop_box=(100, 100, 400, 400), size=(300, 300)):
+        img = Image.open(path)
+        cropped = img.crop(crop_box)
+        resized = cropped.resize(size)
+        resized.save(path)
+
+    def overlay_logo_on_image(self, background_path, logo_path, output_path, position=(10, 10), rotation_angle=45):
+        background = Image.open(background_path).convert("RGBA")
+        logo = Image.open(logo_path).convert("RGBA")
+        logo = logo.rotate(rotation_angle, expand=True)
+        background.paste(logo, position, logo)
+        background.save(output_path)
+
+    def process_book(self):
+        url_book = simpledialog.askstring("Livre", "Entrez l'URL du livre texte (Project Gutenberg) :")
+        if not url_book:
+            return
+
+        # Télécharger le texte, extraire métadonnées + 1er chapitre
+        text = self.download_book_text(url_book)
+        title, author, first_chapter = self.extract_metadata_and_first_chapter(text)
+
+        # Afficher les infos dans le text_area
+        self.text_area.delete(1.0, tk.END)
+        self.text_area.insert(tk.END, f"Titre: {title}\nAuteur: {author}\n\nPremier Chapitre:\n{first_chapter[:2000]}...")
+
+        # Analyse paragraphes (mots par paragraphe, arrondis)
+        counts = self.count_words_per_paragraph(first_chapter)
+        distrib = self.paragraph_length_distribution(counts)
+
+        # Graphique distribution longueurs paragraphes
+        x, y = zip(*distrib)
+        fig, ax = plt.subplots()
+        ax.bar(x, y)
+        ax.set_xlabel("Nombre de mots par paragraphe (arrondi)")
+        ax.set_ylabel("Nombre de paragraphes")
+        ax.set_title("Distribution des longueurs des paragraphes")
+        plt.show()
+
+        # Télécharger l'image 1
+        url_img = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Old_book_icon.svg/1024px-Old_book_icon.svg.png"
+        img1_path = self.download_image_1(url_img)
+
+        # Recadrer et redimensionner
+        self.crop_and_resize_image(img1_path)
+
+        # Ajouter logo (image n°2 en noir et blanc sur disque)
+        logo_path = "logo_bw.png"  # Met ici ton chemin vers le logo B/N
+        output_path = "final_image.png"
+        self.overlay_logo_on_image(img1_path, logo_path, output_path)
+
+        messagebox.showinfo("Terminé", f"Traitement terminé ! Image finale sauvegardée dans {output_path}")
+
