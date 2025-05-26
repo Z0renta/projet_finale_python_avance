@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from database import create_table, clear_table, insert_data, fetch_all
 from api import fetch_posts
+import os
 
 class Application(tk.Tk):
     def __init__(self):
@@ -33,8 +34,15 @@ class Application(tk.Tk):
         self.text_area.pack(fill=tk.BOTH, expand=True)
 
     def clear_database(self):
-        clear_table()
-        messagebox.showinfo("Succès", "La base de données a été effacée.")
+        confirm = messagebox.askyesno("Confirmation", "Supprimer complètement le fichier de base de données ?")
+        if confirm:
+            db_path = "data/donnees.db"
+            if os.path.exists(db_path):
+                os.remove(db_path)
+                messagebox.showinfo("Succès", "Le fichier de base de données a été supprimé.")
+            else:
+                messagebox.showwarning("Erreur", "Le fichier n'existe pas.")
+
 
     def download_data(self):
         try:
