@@ -16,6 +16,8 @@ from io import BytesIO
 
 class Application(tk.Tk):
     def __init__(self):
+        self.canvas = None
+
         super().__init__()
         self.title("Application de Données JSON")
         self.geometry("800x600")
@@ -51,7 +53,11 @@ class Application(tk.Tk):
         if confirm:
             db_path = "data/donnees.db"
             if os.path.exists(db_path):
-                os.remove(db_path)
+                # os.remove(db_path)
+                clear_table()
+                self.destroy_graph()
+                self.canvas = None
+                self.text_area.delete(1.0, tk.END)
                 messagebox.showinfo("Succès", "Le fichier de base de données a été supprimé.")
             else:
                 messagebox.showwarning("Erreur", "Le fichier n'existe pas.")
@@ -72,24 +78,42 @@ class Application(tk.Tk):
 
     def show_graph(self):
         rows = fetch_all()
-        user_counts = {}
-        for row in rows:
-            user_counts[row[1]] = user_counts.get(row[1], 0) + 1
+        if rows != []:
+            user_counts = {}
+            for row in rows:
+                user_counts[row[1]] = user_counts.get(row[1], 0) + 1
 
-        fig, ax = plt.subplots()
-        ax.bar(user_counts.keys(), user_counts.values())
-        ax.set_xlabel("UserID")
-        ax.set_ylabel("Nombre de posts")
-        ax.set_title("Posts par utilisateur")
+            fig, ax = plt.subplots()
+            ax.bar(user_counts.keys(), user_counts.values())
+            ax.set_xlabel("UserID")
+            ax.set_ylabel("Nombre de posts")
+            ax.set_title("Posts par utilisateur")
 
-        canvas = FigureCanvasTkAgg(fig, master=self)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            self.canvas = FigureCanvasTkAgg(fig, master=self)
+            self.canvas.draw()
+            self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            self.canvas_widget = self.canvas.get_tk_widget()
+            self.canvas_widget.pack(fill=tk.BOTH, expand=True)
+        else:
+            messagebox.showerror("Attention", "Vous devez avant tout télécharger les données !")
+    
+    def destroy_graph(self):
+        if hasattr(self, 'canvas_widget') and self.canvas_widget:
+            self.canvas_widget.destroy()
+            self.canvas = None
+            self.canvas_widget = None
+
 
     def set_bg_color(self):
-        color = simpledialog.askstring("Options", "Entrez une couleur de fond :")
-        if color:
-            self.text_area.config(bg=color)
+        list_color = ['red', 'blue', 'green']
+        boucle = True
+        while boucle:
+            color = simpledialog.askstring("Options", "Entrez une couleur de fond (red, green, blue):")
+            if color in list_color:
+                boucle = False
+                self.text_area.config(bg=color)
+            else :
+                messagebox.showinfo("Erreur", "Vous devez entrer une couleur de la liste !")
 
 
     # ======= MÉTHODES LIVRE =======
@@ -187,3 +211,9 @@ class Application(tk.Tk):
 
         messagebox.showinfo("Terminé", f"Traitement terminé ! Image finale sauvegardée dans {output_path}")
 
+    def on_close(self):
+        print("Fermeture interceptée.")
+        # Tu peux afficher un message, enregistrer des données, etc.
+        if tk.messagebox.askokcancel("Quitter", "Veux-tu vraiment quitter ?"):
+            clear_table()
+            self.destroy()
