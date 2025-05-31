@@ -12,6 +12,7 @@ from docx import Document
 from docx.shared import Inches
 from PIL import Image
 from io import BytesIO
+from collections import defaultdict
 
 
 class Application(tk.Tk):
@@ -30,6 +31,7 @@ class Application(tk.Tk):
         data_menu.add_command(label="Effacer la base de données", command=self.clear_database)
         data_menu.add_command(label="Télécharger les données", command=self.download_data)
         data_menu.add_command(label="Afficher le graphique", command=self.show_graph)
+        data_menu.add_command(label="Afficher l'agrégation", command=self.show_aggregation)
         menu_bar.add_cascade(label="Données", menu=data_menu)
 
         book_menu = tk.Menu(menu_bar, tearoff=0)
@@ -81,6 +83,37 @@ class Application(tk.Tk):
         ax.set_xlabel("UserID")
         ax.set_ylabel("Nombre de posts")
         ax.set_title("Posts par utilisateur")
+
+        canvas = FigureCanvasTkAgg(fig, master=self)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    def show_aggregation(self):
+        rows = fetch_all()
+        if not rows:
+            messagebox.showinfo("information", "Aucune donnée à afficher.")
+            return
+
+        user_length = defaultdict(list)
+
+        for row in rows:
+            user_id = row[1]
+            body_length = len(row[3])
+            user_length[user_id].append(body_length)
+
+        user_avg = {user: sum(lengths) / len(lengths) for user, lengths in user_length.items()}
+
+        self.text_area.delete(1.0, tk.END)
+        self.text_area.insert(tk.END, "Moyenne des longueurs de texte par utilisateur :\n\n")
+        for user, avg in sorted(user_avg.items()):
+            self.text_area.insert(tk.END, f"User {user} : {avg:.2f} caractères en moyenne\n")
+
+
+        fig, ax = plt.subplots()
+        ax.bar(user_avg.keys(), user_avg.values())
+        ax.set_title("Longueur moyenne des posts par utilisateur")
+        ax.set_xlabel("User ID")
+        ax.set_ylabel("Longueur moyenne (caractères)")
 
         canvas = FigureCanvasTkAgg(fig, master=self)
         canvas.draw()
