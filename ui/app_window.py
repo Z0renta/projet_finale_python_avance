@@ -13,6 +13,8 @@ from docx.shared import Inches
 from PIL import Image
 from io import BytesIO
 from collections import defaultdict
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 
 class Application(tk.Tk):
@@ -207,44 +209,63 @@ class Application(tk.Tk):
         background.save(output_path)
 
     def process_book(self):
-        url_book = simpledialog.askstring("Livre", "Entrez l'URL du livre texte (Project Gutenberg) :")
-        if not url_book:
+        url_page = simpledialog.askstring("Livre", "Entrez l'URL de la page HTML (ex: https://www.gutenberg.org/cache/epub/1342/pg1342-images.html) :")
+        if not url_page:
             return
 
-        # Télécharger le texte, extraire métadonnées + 1er chapitre
-        text = self.download_book_text(url_book)
-        title, author, first_chapter = self.extract_metadata_and_first_chapter(text)
+        try:
+            # Télécharger la page HTML
+            headers = {
+                "User-Agent": "Mozilla/5.0"
+            }
+            response = requests.get(url_page, headers=headers)
+            response.raise_for_status()
+            html = response.text
 
-        # Afficher les infos dans le text_area
-        self.text_area.delete(1.0, tk.END)
-        self.text_area.insert(tk.END, f"Titre: {title}\nAuteur: {author}\n\nPremier Chapitre:\n{first_chapter[:2000]}...")
+            # Parser avec BeautifulSoup
+            soup = BeautifulSoup(html, 'html.parser')
+            title_tag = soup.find('title')
+            if title_tag and " by " in title_tag.text:
+                title, author = map(str.strip, title_tag.text.split(" by ", 1))
+            else:
+                title = title_tag.text.strip() if title_tag else "Titre inconnu"
+                author = "Auteur inconnu"
 
-        # Analyse paragraphes (mots par paragraphe, arrondis)
-        counts = self.count_words_per_paragraph(first_chapter)
-        distrib = self.paragraph_length_distribution(counts)
+            # Construire URL de l'image (image par défaut : cover.jpg dans le dossier "images/")
+            img_relative_url = "images/cover.jpg"
+            img_url = urljoin(url_page, img_relative_url)
 
-        # Graphique distribution longueurs paragraphes
-        x, y = zip(*distrib)
-        fig, ax = plt.subplots()
-        ax.bar(x, y)
-        ax.set_xlabel("Nombre de mots par paragraphe (arrondi)")
-        ax.set_ylabel("Nombre de paragraphes")
-        ax.set_title("Distribution des longueurs des paragraphes")
-        plt.show()
+            # Télécharger l'image avec header User-Agent
+            img_response = requests.get(img_url, headers=headers)
+            if img_response.status_code != 200:
+                raise Exception(f"Erreur lors du téléchargement de l'image : {img_response.status_code}")
 
-        # Télécharger l'image 1
-        url_img = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Old_book_icon.svg/1024px-Old_book_icon.svg.png"
-        img1_path = self.download_image_1(url_img)
+            img = Image.open(BytesIO(img_response.content))
+            img_path = "cover_image.jpg"
+            img.save(img_path)
 
-        # Recadrer et redimensionner
-        self.crop_and_resize_image(img1_path)
+            # Demander auteur du rapport
+            report_author = simpledialog.askstring("Auteur du rapport", "Entrez le nom de l'auteur du rapport :")
+            if not report_author:
+                report_author = "Inconnu"
 
-        # Ajouter logo (image n°2 en noir et blanc sur disque)
-        logo_path = "logo_bw.png"  # Met ici ton chemin vers le logo B/N
-        output_path = "final_image.png"
-        self.overlay_logo_on_image(img1_path, logo_path, output_path)
+            # Créer le document Word
+            doc = Document()
+            doc.add_heading("Rapport de Lecture", level=0)
+            doc.add_paragraph(f"Titre du livre : {title}")
+            doc.add_paragraph(f"Auteur du livre : {author}")
+            doc.add_paragraph(f"Auteur du rapport : {report_author}")
+            doc.add_picture(img_path, width=Inches(4))
 
-        messagebox.showinfo("Terminé", f"Traitement terminé ! Image finale sauvegardée dans {output_path}")
+            doc.save("rapport.docx")
+            messagebox.showinfo("Succès", "Document Word généré : rapport.docx")
+
+            # Afficher infos dans la zone de texte
+            self.text_area.delete(1.0, tk.END)
+            self.text_area.insert(tk.END, f"📘 Livre traité : {title} par {author}\nDocument Word sauvegardé.")
+
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Une erreur est survenue : {str(e)}")
 
     def on_close(self):
         print("Fermeture interceptée.")
