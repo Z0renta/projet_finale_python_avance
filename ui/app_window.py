@@ -153,7 +153,7 @@ class Application(tk.Tk):
                 messagebox.showinfo("Erreur", "Vous devez entrer une couleur de la liste !")
 
 
-    # ======= MÉTHODES LIVRE =======
+ # ======= MÉTHODES LIVRE =======
 
     def download_book_text(self, url):
         response = requests.get(url)
@@ -189,11 +189,6 @@ class Application(tk.Tk):
         sorted_counts = sorted(counter.items())
         return sorted_counts
 
-    def download_image_1(self, url, save_path='image1.jpg'):
-        response = requests.get(url)
-        img = Image.open(BytesIO(response.content))
-        img.save(save_path)
-        return save_path
 
     def crop_and_resize_image(self, path, crop_box=(100, 100, 400, 400), size=(300, 300)):
         img = Image.open(path)
@@ -201,12 +196,6 @@ class Application(tk.Tk):
         resized = cropped.resize(size)
         resized.save(path)
 
-    def overlay_logo_on_image(self, background_path, logo_path, output_path, position=(10, 10), rotation_angle=45):
-        background = Image.open(background_path).convert("RGBA")
-        logo = Image.open(logo_path).convert("RGBA")
-        logo = logo.rotate(rotation_angle, expand=True)
-        background.paste(logo, position, logo)
-        background.save(output_path)
 
     def process_book(self):
         url_page = simpledialog.askstring("Livre", "Entrez l'URL de la page HTML (ex: https://www.gutenberg.org/cache/epub/1342/pg1342-images.html) :")
@@ -242,6 +231,8 @@ class Application(tk.Tk):
 
             img = Image.open(BytesIO(img_response.content))
             img_path = "cover_image.jpg"
+            
+
             img.save(img_path)
 
             # Demander auteur du rapport
@@ -263,9 +254,32 @@ class Application(tk.Tk):
             # Afficher infos dans la zone de texte
             self.text_area.delete(1.0, tk.END)
             self.text_area.insert(tk.END, f"📘 Livre traité : {title} par {author}\nDocument Word sauvegardé.")
+            # Télécharger le texte brut du livre
+            txt_url = url_page.replace("-images.html", ".txt")
+            text = self.download_book_text(txt_url)
+            _, _, first_chapter = self.extract_metadata_and_first_chapter(text)
+
+            # Compter les mots par paragraphe
+            counts = self.count_words_per_paragraph(first_chapter)
+            distribution = self.paragraph_length_distribution(counts)
+
+            # Afficher la distribution dans un graphique
+            x_vals, y_vals = zip(*distribution)
+            fig, ax = plt.subplots()
+            ax.bar(x_vals, y_vals, color='skyblue')
+            ax.set_xlabel("Longueur du paragraphe (arrondi à la dizaine)")
+            ax.set_ylabel("Nombre de paragraphes")
+            ax.set_title("Distribution des longueurs de paragraphes (Chapitre 1)")
+            self.destroy_graph()  # Nettoyer les anciens graphes
+            self.canvas = FigureCanvasTkAgg(fig, master=self)
+            self.canvas.draw()
+            self.canvas_widget = self.canvas.get_tk_widget()
+            self.canvas_widget.pack(fill=tk.BOTH, expand=True)
+
 
         except Exception as e:
             messagebox.showerror("Erreur", f"Une erreur est survenue : {str(e)}")
+
 
     def on_close(self):
         print("Fermeture interceptée.")
